@@ -18,7 +18,7 @@ cp -R "$TESTS_DIR" $RESULT_DIR
 for i in "$RESULT_DIR"/* ; do
     echo ">>>>> Running test $(basename $i) ..."
     cd "$i"
-    python "$BASE_DIR/squid-migrate-conf.py" "squid.conf"
+    python "$BASE_DIR/squid-migrate-conf.py" --conf "squid.conf"
     cd -
     echo ">>>>> Finished"
 done
