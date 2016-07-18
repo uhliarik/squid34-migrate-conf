@@ -26,6 +26,7 @@ import re
 import shutil
 import traceback
 import argparse
+import glob
 
 class ConfMigration:
     # TODO: maybe change to dict + add more changes
@@ -95,12 +96,16 @@ class ConfMigration:
         include_list = ""
         if not (m is None):
              include_list = re.split('\s+', m.group(1))
-             for include_file in include_list:
-                 print "%sFound include %s config" % (self.get_prefix_str(), include_file)
-                 if os.path.isfile(include_file):
-                     print "%sMigrating included %s config" % (self.get_prefix_str(), include_file)
-                     conf = ConfMigration(self.args, self.level+1, include_file)
-                     conf.migrate()
+             for include_file_re in include_list:
+                 for include_file in glob.glob(include_file_re):
+                     print "%sFound include %s config" % (self.get_prefix_str(), include_file)
+                     if os.path.isfile(include_file):
+                         print "%sMigrating included %s config" % (self.get_prefix_str(), include_file)
+                         conf = ConfMigration(self.args, self.level+1, include_file)
+                         conf.migrate()
+
+                 if (len(glob.glob(include_file_re)) == 0 and not (os.path.isfile(include_file_re))):
+                     print "%sConfig %s doesn't exist!" % (self.get_prefix_str(), include_file_re)
 
     def sub_line(self, line, old_str, new_str):
         new_line = re.sub(old_str, new_str, line)
@@ -183,7 +188,7 @@ if __name__ == '__main__':
     finally:
         print "*"*80
         if not args.write_changes:
-            print "CHANGES HAS NOT BEEN WRITTEN TO CONFIG FILES! USE --write-changes OPTION TO WRITE CHANGES"
+            print "CHANGES HAS NOT BEEN WRITTEN TO CONFIG FILES!\nUSE --write-changes OPTION TO WRITE CHANGES"
         else:
             print "CHANGES HAS BEEN WRITTEN TO CONFIG FILES!"
         print "*"*80
