@@ -175,9 +175,12 @@ if __name__ == '__main__':
         sys.stderr.write("Error: File doesn't exist: %s\n" % (args.squid_conf))
         sys.exit(1)
 
+    print args.squid_conf
+
     # change working directory
     script_dir = os.getcwd()
-    os.chdir(os.path.dirname(args.squid_conf))
+    if (os.path.dirname(args.squid_conf)):
+        os.chdir(os.path.dirname(args.squid_conf))
 
     # start migration
     try:
