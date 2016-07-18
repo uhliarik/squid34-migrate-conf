@@ -122,10 +122,7 @@ class ConfMigration:
         self.process_conf_lines()
         if self.write_changes:
             if (not (set(self.migrated_squid_conf_data) == set(self.squid_conf_data.split(os.linesep)))):
-                print "JINE"
                 self.write_conf()
-            else:
-                print "STEJNE"
 
         print "%sMigration successfully finished" % (self.get_prefix_str())
 
