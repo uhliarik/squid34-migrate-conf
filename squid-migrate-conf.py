@@ -24,6 +24,8 @@ import sys
 import os
 import re
 import shutil
+import traceback
+import argparse
 
 class ConfMigration:
     # TODO: maybe change to dict + add more changes
@@ -37,11 +39,14 @@ class ConfMigration:
     DEFAULT_BACKUP_EXT=".bak"
     DEFAULT_LEVEL_INDENT=3
 
-    def __init__(self, args=None, level=0):
-        if (len(args) > 0):
-            self.squid_conf = args[0]
+    def __init__(self, args, level=0, squid_conf=''):
+        self.args = args
+
+        if squid_conf:
+            self.squid_conf = squid_conf
         else:
-            self.squid_conf = ConfMigration.DEFAULT_SQUID_CONF
+            self.squid_conf = args.squid_conf
+        self.write_changes = args.write_changes
 
         self.level = level
         if (not os.path.isfile(self.squid_conf)):
@@ -52,8 +57,12 @@ class ConfMigration:
 
         self.migrated_squid_conf_data = []
         self.squid_conf_data = None
+        self.line_num = 0
 
         print ("%sSquid conf is: " + self.squid_conf) % self.get_prefix_str()
+
+    def print_info(self, text=''):
+        print ("%s%s", self.get_prefix_str(), text)
 
     def get_backup_name(self):
         file_idx = 1
@@ -85,30 +94,43 @@ class ConfMigration:
         m = re.match(self.RE_INCLUDE_CHECK, line)
         include_list = ""
         if not (m is None):
-             # TODO: add better splitting - it is naive now
-             include_list = m.group(1).split(" ")
+             include_list = re.split('\s+', m.group(1))
              for include_file in include_list:
                  print "%sFound include %s config" % (self.get_prefix_str(), include_file)
                  if os.path.isfile(include_file):
                      print "%sMigrating included %s config" % (self.get_prefix_str(), include_file)
-                     conf = ConfMigration([include_file], self.level+1)
+                     conf = ConfMigration(self.args, self.level+1, include_file)
                      conf.migrate()
+
+    def sub_line(self, line, old_str, new_str):
+        new_line = re.sub(old_str, new_str, line)
+        if not (new_line is line):
+            print "%s%s was replaced by %s" % (self.get_prefix_str(), old_str, new_str)
+        return new_line
 
     def process_conf_lines(self):
         for line in self.squid_conf_data.split(os.linesep):
             self.check_include(line)
-            line = re.sub(self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_REP, line)
-            line = re.sub(self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP, line)
+            line = self.sub_line(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_REP)
+            line = self.sub_line(line, self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP)
             self.migrated_squid_conf_data.append(line)
+
+            self.line_num = self.line_num + 1
 
     def migrate(self):
         self.read_conf()
         self.process_conf_lines()
-        self.write_conf()
+        if self.write_changes:
+            if (not (set(self.migrated_squid_conf_data) == set(self.squid_conf_data.split(os.linesep)))):
+                print "JINE"
+                self.write_conf()
+            else:
+                print "STEJNE"
+
         print "%sMigration successfully finished" % (self.get_prefix_str())
 
     def get_prefix_str(self):
-        return (("    " * self.level) + "["+  self.squid_conf + "]: ")
+        return (("    " * self.level) + "["+  self.squid_conf + "@%d]: " % (self.line_num))
 
     def read_conf(self):
         print ("%sReading squid conf: " + self.squid_conf) % (self.get_prefix_str())
@@ -121,7 +143,8 @@ class ConfMigration:
            sys.exit(1)
 
     def write_conf(self):
-        print ("%sCreating backup conf: " + self.squid_bak_conf) % (self.get_prefix_str())
+        print ("%sCreating backup conf: %s" ) % (self.get_prefix_str(), self.squid_bak_conf)
+        print ("%sWriting changes to: %s" % (self.get_prefix_str(), self.squid_conf))
         try:
            shutil.copyfile(self.squid_conf, self.squid_bak_conf)
            self.out_file = open(self.squid_conf, "w")
@@ -131,7 +154,40 @@ class ConfMigration:
            sys.stderr.write("%s Error: %s\n" % (self.get_prefix_str, e))
            sys.exit(1)
 
-if __name__ == '__main__':
-    conf = ConfMigration(sys.argv[1:], 0)
-    conf.migrate()
+def parse_args():
+    parser = argparse.ArgumentParser(description='Migrate squid configuration files to configuration files, which are compatible with squid 3.5.')
+    parser.add_argument('--conf', dest='squid_conf', action='store',
+                        default=ConfMigration.DEFAULT_SQUID_CONF,
+                        help='specify filename of squid configuration (default: %s)' % (ConfMigration.DEFAULT_SQUID_CONF))
+    parser.add_argument('--write-changes', dest='write_changes', action='store_true',
+                        default=False,
+                        help='Changes are written to corresponding configuration files')
+    return parser.parse_args()
 
+if __name__ == '__main__':
+    # parse args from command line
+    args = parse_args()
+
+    # check if config file exists
+    if (not os.path.exists(args.squid_conf)):
+        sys.stderr.write("Error: File doesn't exist: %s\n" % (args.squid_conf))
+        sys.exit(1)
+
+    # change working directory
+    script_dir = os.getcwd()
+    os.chdir(os.path.dirname(args.squid_conf))
+
+    # start migration
+    try:
+        conf = ConfMigration(args, 0)
+        conf.migrate()
+    except:
+        traceback.print_exc(file=sys.stdout)
+    finally:
+        print "*"*80
+        if not args.write_changes:
+            print "CHANGES HAS NOT BEEN WRITTEN TO CONFIG FILES! USE --write-changes OPTION TO WRITE CHANGES"
+        else:
+            print "CHANGES HAS BEEN WRITTEN TO CONFIG FILES!"
+        print "*"*80
+        os.chdir(script_dir)

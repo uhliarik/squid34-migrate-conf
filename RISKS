@@ -4,14 +4,14 @@ Current known risks
 1) package downgrade
 - if rebased squid package (v3.5) is installed, it can not be downgraded, because 
   directories /usr/share/squid/errors/zh-cn and /usr/share/squid/errors/zh-tw were
-  substituted by symlinks. 
-- please see rhbz #447156, why it is not possible to substitute directories with
+  substituted by symlinks.
+- please see rhbz #447156, why it is not possible to substitute directories withci
   links and vice versa
 - upgrading was workarounded by using modified Lua script from https://fedoraproject.org/wiki/Packaging:Directory_Replacement ,
   but there is no option, to run this script during downgrade, because there is no trigger, which could 
   be executed before check phase of downgraded package (see https://fedoraproject.org/wiki/Packaging:Scriptlets#Scriptlet_Ordering)
 
-2) package downgrade #2   
+2) package downgrade #2
 - there can be only one squid %triggerin section in SPEC file. That means, that we are
   only able to trigger migration script, during upgrade, but we have no other tool, how
   to restore original configuration files (config files before migration script was executed).  
@@ -19,9 +19,9 @@ Current known risks
   will remove symlinks (risk #1), and it will also recover pre-migration config files.
 
 3) correct squid configuration migration
-- althought, I did my best, we can not be 100% sure, that all squid configuraiton option were 
+- althought, I did my best, we can not be 100% sure, that all squid configuraiton option were
   migrated successfully (QA was asked, to also check my work, so it should be double checked, but anyway,
-  there were too many changes). 
+  there were too many changes).
 - squid migration should be handled by migration script (I temporarily named it as squid-migrate-conf.py)
 
 4) delivery of migration and pre-downgrade scripts
