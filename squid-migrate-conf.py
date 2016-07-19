@@ -40,6 +40,8 @@ class ConfMigration:
     DEFAULT_BACKUP_EXT=".bak"
     DEFAULT_LEVEL_INDENT=3
 
+    MAX_NESTED_INCLUDES=16
+
     def __init__(self, args, level=0, squid_conf=''):
         self.args = args
 
@@ -97,6 +99,7 @@ class ConfMigration:
         if not (m is None):
              include_list = re.split('\s+', m.group(1))
              for include_file_re in include_list:
+                 # included file can be written in regexp syntax
                  for include_file in glob.glob(include_file_re):
                      print "%sFound include %s config" % (self.get_prefix_str(), include_file)
                      if os.path.isfile(include_file):
@@ -104,6 +107,7 @@ class ConfMigration:
                          conf = ConfMigration(self.args, self.level+1, include_file)
                          conf.migrate()
 
+                 # check, if included file exists
                  if (len(glob.glob(include_file_re)) == 0 and not (os.path.isfile(include_file_re))):
                      print "%sConfig %s doesn't exist!" % (self.get_prefix_str(), include_file_re)
 
@@ -123,6 +127,11 @@ class ConfMigration:
             self.line_num = self.line_num + 1
 
     def migrate(self):
+        # prevent infinite loop
+        if (self.level > ConfMigration.MAX_NESTED_INCLUDES):
+            sys.stderr.write("%sWARNING: hit maximum nested include count\n" % (self.get_prefix_str()))
+            return
+
         self.read_conf()
         self.process_conf_lines()
         if self.write_changes:
