@@ -29,11 +29,14 @@ import argparse
 import glob
 
 class ConfMigration:
-    # TODO: maybe change to dict + add more changes
     RE_LOG_ACCESS="log_access\s+"
     RE_LOG_ACCESS_REP="access_log none "
+    RE_LOG_ACCESS_TEXT="log_access"
+
     RE_LOG_ICAP="log_icap\s+"
     RE_LOG_ICAP_REP="icap_log none "
+    RE_LOG_ICAP_TEXT="log_icap"
+
     RE_INCLUDE_CHECK="\s*include\s+(.*)"
 
     DEFAULT_SQUID_CONF="/etc/squid/squid.conf"
@@ -50,7 +53,9 @@ class ConfMigration:
         else:
             self.squid_conf = args.squid_conf
         self.write_changes = args.write_changes
+        self.debug = args.debug
 
+        self.line_num = 0
         self.level = level
         if (not os.path.isfile(self.squid_conf)):
             sys.stderr.write("%sError: config file %s doesn't exist\n" % (self.get_prefix_str(), self.squid_conf))
@@ -60,12 +65,13 @@ class ConfMigration:
 
         self.migrated_squid_conf_data = []
         self.squid_conf_data = None
-        self.line_num = 0
 
-        print ("%sSquid conf is: " + self.squid_conf) % self.get_prefix_str()
+
+        print ("Migrating: " + self.squid_conf)
 
     def print_info(self, text=''):
-        print ("%s%s", self.get_prefix_str(), text)
+        if (not self.debug):
+            print "%s%s" % (self.get_prefix_str(), text)
 
     def get_backup_name(self):
         file_idx = 1
@@ -101,27 +107,34 @@ class ConfMigration:
              for include_file_re in include_list:
                  # included file can be written in regexp syntax
                  for include_file in glob.glob(include_file_re):
-                     print "%sFound include %s config" % (self.get_prefix_str(), include_file)
+                     self.print_info("Found include %s config" % (include_file))
                      if os.path.isfile(include_file):
-                         print "%sMigrating included %s config" % (self.get_prefix_str(), include_file)
+                         self.print_info("Migrating included %s config" % (include_file))
                          conf = ConfMigration(self.args, self.level+1, include_file)
                          conf.migrate()
 
                  # check, if included file exists
                  if (len(glob.glob(include_file_re)) == 0 and not (os.path.isfile(include_file_re))):
-                     print "%sConfig %s doesn't exist!" % (self.get_prefix_str(), include_file_re)
+                     self.print_info("Config %s doesn't exist!" % (include_file_re))
 
-    def sub_line(self, line, old_str, new_str):
+    def print_sub_text(self, text, new_str):
+        if self.write_changes:
+            print "File: '%s', line: %d - directive %s was replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
+        else:
+            print "File: '%s', line: %d - directive %s would be replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
+
+    def sub_line(self, line, old_str, new_str, text):
         new_line = re.sub(old_str, new_str, line)
         if not (new_line is line):
-            print "%s%s was replaced by %s" % (self.get_prefix_str(), old_str, new_str)
+            self.print_sub_text(text, new_str)
+
         return new_line
 
     def process_conf_lines(self):
         for line in self.squid_conf_data.split(os.linesep):
             self.check_include(line)
-            line = self.sub_line(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_REP)
-            line = self.sub_line(line, self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP)
+            line = self.sub_line(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_REP, self.RE_LOG_ACCESS_TEXT)
+            line = self.sub_line(line, self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP, self.RE_LOG_ICAP_TEXT)
             self.migrated_squid_conf_data.append(line)
 
             self.line_num = self.line_num + 1
@@ -129,7 +142,7 @@ class ConfMigration:
     def migrate(self):
         # prevent infinite loop
         if (self.level > ConfMigration.MAX_NESTED_INCLUDES):
-            sys.stderr.write("%sWARNING: hit maximum nested include count\n" % (self.get_prefix_str()))
+            sys.stderr.write("WARNING: hit maximum nested include count\n")
             return
 
         self.read_conf()
@@ -138,13 +151,13 @@ class ConfMigration:
             if (not (set(self.migrated_squid_conf_data) == set(self.squid_conf_data.split(os.linesep)))):
                 self.write_conf()
 
-        print "%sMigration successfully finished" % (self.get_prefix_str())
+        self.print_info("Migration successfully finished")
 
     def get_prefix_str(self):
         return (("    " * self.level) + "["+  self.squid_conf + "@%d]: " % (self.line_num))
 
     def read_conf(self):
-        print ("%sReading squid conf: " + self.squid_conf) % (self.get_prefix_str())
+        self.print_info("Reading squid conf: " + self.squid_conf)
         try:
            self.in_file = open(self.squid_conf, 'r')
            self.squid_conf_data = self.in_file.read()
@@ -154,8 +167,8 @@ class ConfMigration:
            sys.exit(1)
 
     def write_conf(self):
-        print ("%sCreating backup conf: %s" ) % (self.get_prefix_str(), self.squid_bak_conf)
-        print ("%sWriting changes to: %s" % (self.get_prefix_str(), self.squid_conf))
+        self.print_info("Creating backup conf: %s" % (self.squid_bak_conf))
+        self.print_info("Writing changes to: %s" % (self.squid_conf))
         try:
            shutil.copyfile(self.squid_conf, self.squid_bak_conf)
            self.out_file = open(self.squid_conf, "w")
@@ -173,6 +186,7 @@ def parse_args():
     parser.add_argument('--write-changes', dest='write_changes', action='store_true',
                         default=False,
                         help='Changes are written to corresponding configuration files')
+    parser.add_argument('--debug', dest="debug", action='store_true', default=False, help='print debug messages to stderr')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -193,13 +207,12 @@ if __name__ == '__main__':
     try:
         conf = ConfMigration(args, 0)
         conf.migrate()
-    except:
-        traceback.print_exc(file=sys.stdout)
     finally:
-        print "*"*80
+        print ""
+
         if not args.write_changes:
-            print "CHANGES HAS NOT BEEN WRITTEN TO CONFIG FILES!\nUSE --write-changes OPTION TO WRITE CHANGES"
+            print "Changes has NOT been written to config files!\nUse --write-changes option to write changes"
         else:
-            print "CHANGES HAS BEEN WRITTEN TO CONFIG FILES!"
-        print "*"*80
+            print "Changes has been written to config files!"
+
         os.chdir(script_dir)
