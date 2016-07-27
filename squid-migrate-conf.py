@@ -29,12 +29,13 @@ import argparse
 import glob
 
 class ConfMigration:
-    RE_LOG_ACCESS="log_access\s+"
-    RE_LOG_ACCESS_REP="access_log none "
+    RE_LOG_ACCESS="log_access\s+(\w+)\s+"
+    RE_LOG_ACCESS_DENY_REP="access_log none "
+    RE_LOG_ACCESS_ALLOW_REP="access_log daemon:/var/log/squid/access.log "
     RE_LOG_ACCESS_TEXT="log_access"
 
     RE_LOG_ICAP="log_icap\s+"
-    RE_LOG_ICAP_REP="icap_log none "
+    RE_LOG_ICAP_REP="icap_log daemon:/var/log/squid/icap.log "
     RE_LOG_ICAP_TEXT="log_icap"
 
     RE_INCLUDE_CHECK="\s*include\s+(.*)"
@@ -70,7 +71,7 @@ class ConfMigration:
         print ("Migrating: " + self.squid_conf)
 
     def print_info(self, text=''):
-        if (not self.debug):
+        if (self.debug):
             print "%s%s" % (self.get_prefix_str(), text)
 
     def get_backup_name(self):
@@ -123,17 +124,38 @@ class ConfMigration:
         else:
             print "File: '%s', line: %d - directive %s would be replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
 
-    def sub_line(self, line, old_str, new_str, text):
-        new_line = re.sub(old_str, new_str, line)
-        if not (new_line is line):
-            self.print_sub_text(text, new_str)
+    def sub_line_ad(self, line, line_re, allow_sub, deny_sub, text):
+        new_line = line
+        m = re.match(line_re, line)
+        if not (m is None):
+            # check, if allow or deny was used and select coresponding sub
+            sub_text = allow_sub
+            if (re.match('allow', m.group(1), re.IGNORECASE)):
+                new_line = re.sub(line_re, sub_text, line)
+            elif (re.match('deny', m.group(1), re.IGNORECASE)):
+                sub_text = deny_sub
+                new_line = re.sub(line_re, sub_text, line)
+
+            if not (new_line is line):
+                self.print_sub_text(text + " " +  m.group(1), sub_text)
+
+        return new_line
+
+    def sub_line(self, line, line_re, sub, text):
+        new_line = line
+        m = re.match(line_re, line)
+        if not (m is None):
+            new_line = re.sub(line_re, sub, line)
+
+            if not (new_line is line):
+                self.print_sub_text(text, sub)
 
         return new_line
 
     def process_conf_lines(self):
         for line in self.squid_conf_data.split(os.linesep):
             self.check_include(line)
-            line = self.sub_line(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_REP, self.RE_LOG_ACCESS_TEXT)
+            line = self.sub_line_ad(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_ALLOW_REP, self.RE_LOG_ACCESS_DENY_REP, self.RE_LOG_ACCESS_TEXT)
             line = self.sub_line(line, self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP, self.RE_LOG_ICAP_TEXT)
             self.migrated_squid_conf_data.append(line)
 
