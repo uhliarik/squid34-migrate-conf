@@ -31,7 +31,7 @@ import glob
 class ConfMigration:
     RE_LOG_ACCESS="log_access\s+(\w+)\s+"
     RE_LOG_ACCESS_DENY_REP="access_log none "
-    RE_LOG_ACCESS_ALLOW_REP="access_log daemon:/var/log/squid/access.log "
+    RE_LOG_ACCESS_ALLOW_REP="access_log daemon:/var/log/squid/access.log squid "
     RE_LOG_ACCESS_TEXT="log_access"
 
     RE_LOG_ICAP="log_icap\s+"
