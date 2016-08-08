@@ -38,7 +38,15 @@ class ConfMigration:
     RE_LOG_ICAP_REP="icap_log daemon:/var/log/squid/icap.log "
     RE_LOG_ICAP_TEXT="log_icap"
 
+    RE_HIER_STOPLIST="hierarchy_stoplist\s+(.*)"
+    RE_HIER_STOPLIST_REP="acl %s url_regex %s\nalways_direct allow %s"
+    RE_HIER_STOPLIST_TEXT="hierarchy_stoplist"
+
+    HIER_ACL_NAME="migrated_hs_%d_%d"
+
     RE_INCLUDE_CHECK="\s*include\s+(.*)"
+
+    COMMENT_FMT="# migrated automatically by squid-migrate-conf, original configuration was: %s\n%s"
 
     DEFAULT_SQUID_CONF="/etc/squid/squid.conf"
     DEFAULT_BACKUP_EXT=".bak"
@@ -46,7 +54,7 @@ class ConfMigration:
 
     MAX_NESTED_INCLUDES=16
 
-    def __init__(self, args, level=0, squid_conf=''):
+    def __init__(self, args, level=0, squid_conf='', conf_seq=0):
         self.args = args
 
         if squid_conf:
@@ -55,6 +63,9 @@ class ConfMigration:
             self.squid_conf = args.squid_conf
         self.write_changes = args.write_changes
         self.debug = args.debug
+
+        self.conf_seq = conf_seq
+        self.acl_seq = 0
 
         self.line_num = 0
         self.level = level
@@ -111,7 +122,7 @@ class ConfMigration:
                      self.print_info("Found include %s config" % (include_file))
                      if os.path.isfile(include_file):
                          self.print_info("Migrating included %s config" % (include_file))
-                         conf = ConfMigration(self.args, self.level+1, include_file)
+                         conf = ConfMigration(self.args, self.level+1, include_file, self.conf_seq+1)
                          conf.migrate()
 
                  # check, if included file exists
@@ -123,6 +134,9 @@ class ConfMigration:
             print "File: '%s', line: %d - directive %s was replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
         else:
             print "File: '%s', line: %d - directive %s would be replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
+
+    def add_conf_comment(self, old_line, line):
+        return self.COMMENT_FMT % (old_line, line)
 
     def sub_line_ad(self, line, line_re, allow_sub, deny_sub, text):
         new_line = line
@@ -136,8 +150,10 @@ class ConfMigration:
                 sub_text = deny_sub
                 new_line = re.sub(line_re, sub_text, line)
 
+            # print out, if there was any change and add comment to conf line, if so
             if not (new_line is line):
                 self.print_sub_text(text + " " +  m.group(1), sub_text)
+                new_line = self.add_conf_comment(line, new_line)
 
         return new_line
 
@@ -147,16 +163,47 @@ class ConfMigration:
         if not (m is None):
             new_line = re.sub(line_re, sub, line)
 
+            # print out, if there was any change and add comment to conf line, if so
             if not (new_line is line):
                 self.print_sub_text(text, sub)
+                new_line = self.add_conf_comment(line, new_line)
+
+        return new_line
+
+    def rep_hier_stoplist(self, line, sub, words):
+        wordlist = words.split(' ')
+
+        esc_wordlist = []
+        for w in wordlist:
+            esc_wordlist.append(re.escape(w))
+
+        # unique acl name for hierarchy_stoplist acl
+        acl_name = self.HIER_ACL_NAME % (self.conf_seq, self.acl_seq)
+        return sub % (acl_name, ' '.join(esc_wordlist), acl_name)
+
+    def sub_hier_stoplist(self, line, line_re, sub, text):
+        new_line = line
+        m = re.match(line_re, line)
+        if (not (m is None)):
+            new_line = self.rep_hier_stoplist(line, sub, m.group(1))
+
+        # print out, if there was any change and add comment to conf line, if so
+        if not (new_line is line):
+            self.print_sub_text(text, sub)
+            new_line = self.add_conf_comment(line, new_line)
 
         return new_line
 
     def process_conf_lines(self):
         for line in self.squid_conf_data.split(os.linesep):
-            self.check_include(line)
-            line = self.sub_line_ad(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_ALLOW_REP, self.RE_LOG_ACCESS_DENY_REP, self.RE_LOG_ACCESS_TEXT)
-            line = self.sub_line(line, self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP, self.RE_LOG_ICAP_TEXT)
+
+            # do not migrate comments
+            if not line.strip().startswith('#'):
+               self.check_include(line)
+               line = self.sub_line_ad(line, self.RE_LOG_ACCESS, self.RE_LOG_ACCESS_ALLOW_REP, self.RE_LOG_ACCESS_DENY_REP, self.RE_LOG_ACCESS_TEXT)
+               line = self.sub_line(line, self.RE_LOG_ICAP, self.RE_LOG_ICAP_REP, self.RE_LOG_ICAP_TEXT)
+               line = self.sub_hier_stoplist(line, self.RE_HIER_STOPLIST, self.RE_HIER_STOPLIST_REP, self.RE_HIER_STOPLIST_TEXT)
+
             self.migrated_squid_conf_data.append(line)
 
             self.line_num = self.line_num + 1
@@ -176,7 +223,7 @@ class ConfMigration:
         self.print_info("Migration successfully finished")
 
     def get_prefix_str(self):
-        return (("    " * self.level) + "["+  self.squid_conf + "@%d]: " % (self.line_num))
+        return (("    " * int(self.level)) + "["+  self.squid_conf + "@%d]: " % (self.line_num))
 
     def read_conf(self):
         self.print_info("Reading squid conf: " + self.squid_conf)
@@ -197,7 +244,7 @@ class ConfMigration:
            self.out_file.write(os.linesep.join(self.migrated_squid_conf_data))
            self.out_file.close()
         except Exception as e:
-           sys.stderr.write("%s Error: %s\n" % (self.get_prefix_str, e))
+           sys.stderr.write("%s Error: %s\n" % (self.get_prefix_str(), e))
            sys.exit(1)
 
 def parse_args():
