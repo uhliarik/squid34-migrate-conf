@@ -46,7 +46,7 @@ class ConfMigration:
 
     RE_INCLUDE_CHECK="\s*include\s+(.*)"
 
-    COMMENT_FMT="# migrated automatically by squid-migrate-conf, original configuration was: %s\n%s"
+    COMMENT_FMT="# migrated automatically by squid-migrate-conf, the original configuration was: %s\n%s"
 
     DEFAULT_SQUID_CONF="/etc/squid/squid.conf"
     DEFAULT_BACKUP_EXT=".bak"
@@ -70,7 +70,7 @@ class ConfMigration:
         self.line_num = 0
         self.level = level
         if (not os.path.isfile(self.squid_conf)):
-            sys.stderr.write("%sError: config file %s doesn't exist\n" % (self.get_prefix_str(), self.squid_conf))
+            sys.stderr.write("%sError: the config file %s does not exist\n" % (self.get_prefix_str(), self.squid_conf))
             sys.exit(1)
 
         self.squid_bak_conf = self.get_backup_name()
@@ -119,21 +119,21 @@ class ConfMigration:
              for include_file_re in include_list:
                  # included file can be written in regexp syntax
                  for include_file in glob.glob(include_file_re):
-                     self.print_info("Found include %s config" % (include_file))
+                     self.print_info("A config file %s was found and it will be included" % (include_file))
                      if os.path.isfile(include_file):
-                         self.print_info("Migrating included %s config" % (include_file))
+                         self.print_info("Migrating the included config file %s" % (include_file))
                          conf = ConfMigration(self.args, self.level+1, include_file, self.conf_seq+1)
                          conf.migrate()
 
                  # check, if included file exists
                  if (len(glob.glob(include_file_re)) == 0 and not (os.path.isfile(include_file_re))):
-                     self.print_info("Config %s doesn't exist!" % (include_file_re))
+                     self.print_info("The config file %s does not exist." % (include_file_re))
 
     def print_sub_text(self, text, new_str):
         if self.write_changes:
-            print "File: '%s', line: %d - directive %s was replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
+            print "File: '%s', line: %d - the directive %s was replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
         else:
-            print "File: '%s', line: %d - directive %s would be replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
+            print "File: '%s', line: %d - the directive %s could be replaced by %s" % (self.squid_conf, self.line_num, text, new_str)
 
     def add_conf_comment(self, old_line, line):
         return self.COMMENT_FMT % (old_line, line)
@@ -211,7 +211,7 @@ class ConfMigration:
     def migrate(self):
         # prevent infinite loop
         if (self.level > ConfMigration.MAX_NESTED_INCLUDES):
-            sys.stderr.write("WARNING: hit maximum nested include count\n")
+            sys.stderr.write("WARNING: the maximum number of nested includes was reached\n")
             return
 
         self.read_conf()
@@ -220,7 +220,7 @@ class ConfMigration:
             if (not (set(self.migrated_squid_conf_data) == set(self.squid_conf_data.split(os.linesep)))):
                 self.write_conf()
 
-        self.print_info("Migration successfully finished")
+        self.print_info("The migration finished successfully")
 
     def get_prefix_str(self):
         return (("    " * int(self.level)) + "["+  self.squid_conf + "@%d]: " % (self.line_num))
@@ -248,13 +248,13 @@ class ConfMigration:
            sys.exit(1)
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Migrate squid configuration files to configuration files, which are compatible with squid 3.5.')
+    parser = argparse.ArgumentParser(description='The script migrates the squid 3.3 configuration files to configuration files which are compatible with squid 3.5.')
     parser.add_argument('--conf', dest='squid_conf', action='store',
                         default=ConfMigration.DEFAULT_SQUID_CONF,
                         help='specify filename of squid configuration (default: %s)' % (ConfMigration.DEFAULT_SQUID_CONF))
     parser.add_argument('--write-changes', dest='write_changes', action='store_true',
                         default=False,
-                        help='Changes are written to corresponding configuration files')
+                        help='The changes are written to corresponding configuration files')
     parser.add_argument('--debug', dest="debug", action='store_true', default=False, help='print debug messages to stderr')
     return parser.parse_args()
 
@@ -264,7 +264,7 @@ if __name__ == '__main__':
 
     # check if config file exists
     if (not os.path.exists(args.squid_conf)):
-        sys.stderr.write("Error: File doesn't exist: %s\n" % (args.squid_conf))
+        sys.stderr.write("Error: the file %s does not exist\n" % (args.squid_conf))
         sys.exit(1)
 
     # change working directory
@@ -280,8 +280,8 @@ if __name__ == '__main__':
         print ""
 
         if not args.write_changes:
-            print "Changes has NOT been written to config files!\nUse --write-changes option to write changes"
+            print "The changes have NOT been written to config files.\nUse the --write-changes option to write the changes"
         else:
-            print "Changes has been written to config files!"
+            print "The changes have been written to config files!"
 
         os.chdir(script_dir)
